@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoodWatch – Quoi regarder ce soir ?</title>
+<style>
+:root{--bg:#faf8f5;--fg:#1f1d1a;--mut:#6b665f;--card:#fff;--bd:#e4dfd8;--ac:#c2410c;--acf:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#17150f;--fg:#f2eee8;--mut:#a8a299;--card:#221f18;--bd:#38342b;--ac:#fb923c;--acf:#1a1209}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:640px;margin:0 auto;padding:24px 16px 40px}
+h1{font-size:1.7rem;margin:0 0 4px}h2{font-size:1.25rem;margin:18px 0 12px}
+.mut{color:var(--mut)}
+.bar{height:6px;background:var(--bd);border-radius:9px;margin:14px 0}.bar i{display:block;height:100%;background:var(--ac);border-radius:9px;transition:width .3s}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.opt{background:var(--card);border:2px solid var(--bd);border-radius:12px;padding:12px 10px;text-align:center;cursor:pointer;font:inherit;color:var(--fg)}
+.opt:hover{border-color:var(--ac)}.opt.on{border-color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,var(--card))}
+.opt img{width:44px;height:44px;border-radius:10px;display:block;margin:0 auto 6px}
+.opt b{display:block;font-size:1.6rem}
+.list{display:grid;gap:10px}.list .opt{text-align:left;font-size:1.05rem}
+.btn{background:var(--ac);color:var(--acf);border:0;border-radius:10px;padding:12px 20px;font:inherit;font-weight:600;cursor:pointer;margin-top:16px}
+.btn:disabled{opacity:.4;cursor:default}.btn.ghost{background:none;color:var(--fg);border:1px solid var(--bd);margin-left:8px}
+.res{display:flex;gap:12px;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px;margin:10px 0}
+.res img{width:92px;height:138px;object-fit:cover;border-radius:8px;background:var(--bd);flex:none}
+.res h3{margin:0 0 2px;font-size:1.05rem}.res p{margin:6px 0 0;font-size:.9rem}
+footer{margin-top:36px;font-size:.78rem;color:var(--mut)}
+</style></head><body><main>
+<h1>🎬 MoodWatch</h1>
+<div class="mut">Votre film ou série du soir, en moins d'une minute.</div>
+<div class="bar"><i id="pb" style="width:0"></i></div>
+<div id="app"></div>
+<footer>Ce produit utilise l'API TMDB mais n'est ni approuvé ni certifié par TMDB. Données de disponibilité en streaming fournies par JustWatch.</footer>
+</main>
+<script>
+var MOODS=[
+{e:"😄",t:"Joyeux, envie de rire",m:"35|16",tv:"35"},
+{e:"😰",t:"Stressé, besoin de douceur",m:"35|16|10751",tv:"35|16|10751"},
+{e:"🤔",t:"Pensif, envie de réfléchir",m:"18|99|9648",tv:"18|99|9648"},
+{e:"🥹",t:"Envie d'émotion",m:"18|10749",tv:"18"},
+{e:"🔥",t:"Envie d'adrénaline",m:"28|53|878",tv:"10759|80"},
+{e:"🕵️",t:"Envie d'intrigue",m:"9648|53|80",tv:"9648|80"},
+{e:"🌌",t:"Envie d'évasion",m:"14|12|878",tv:"10765|10759"}];
+var Q=[
+{k:"mood",q:"Quelle est votre humeur ?",o:MOODS.map(function(x,i){return{l:x.e+" "+x.t,v:i}})},
+{k:"energy",q:"Quelle énergie avez-vous ?",o:[{l:"🧠 Cerveau éteint, du facile",v:"easy"},{l:"💡 J'ai envie de réfléchir",v:"deep"}]},
+{k:"format",q:"Quel format ?",o:[{l:"⏱️ Film court (moins de 1h40)",v:"short"},{l:"🎞️ Film, peu importe la durée",v:"movie"},{l:"📺 Une série",v:"tv"}]},
+{k:"who",q:"Vous regardez avec qui ?",o:[{l:"🧍 Seul(e)",v:"solo"},{l:"❤️ En couple",v:"couple"},{l:"🍕 Entre amis",v:"friends"},{l:"👨‍👩‍👧 En famille",v:"family"}]},
+{k:"era",q:"Nouveauté ou valeur sûre ?",o:[{l:"🆕 Du récent",v:"new"},{l:"🕰️ Un classique",v:"old"},{l:"🤷 Peu importe",v:"any"}]}];
+var S={providers:[],a:{}},app=document.getElementById("app"),pool=[],pos=0;
+try{S.providers=JSON.parse(localStorage.getItem("mw-prov")||"[]")}catch(e){}
+function bar(p){document.getElementById("pb").style.width=p+"%"}
+function api(qs){return fetch("/api/tmdb?"+qs).then(function(r){if(!r.ok)throw 0;return r.json()})}
+
+function stepProviders(){
+ bar(0);app.innerHTML='<h2>Sur quelles plateformes regardez-vous ?</h2><div class="mut">Cochez toutes vos plateformes.</div><div id="pg" class="grid" style="margin-top:12px">Chargement…</div><button class="btn" id="go" disabled>Continuer</button>';
+ var go=document.getElementById("go");
+ api("action=providers").then(function(d){
+  var list=d.results.filter(function(p){return p.display_priorities&&p.display_priorities.FR!=null}).sort(function(a,b){return a.display_priorities.FR-b.display_priorities.FR}).slice(0,30);
+  var g=document.getElementById("pg");g.innerHTML="";
+  list.forEach(function(p){
+   var b=document.createElement("button");b.className="opt"+(S.providers.indexOf(p.provider_id)>-1?" on":"");
+   b.innerHTML='<img alt="" src="https://image.tmdb.org/t/p/w92'+p.logo_path+'"><small>'+p.provider_name+'</small>';
+   b.onclick=function(){var i=S.providers.indexOf(p.provider_id);if(i>-1)S.providers.splice(i,1);else S.providers.push(p.provider_id);b.classList.toggle("on");go.disabled=!S.providers.length};
+   g.appendChild(b)});
+  go.disabled=!S.providers.length;
+ }).catch(function(){document.getElementById("pg").textContent="Impossible de charger les plateformes. Réessayez plus tard."});
+ go.onclick=function(){try{localStorage.setItem("mw-prov",JSON.stringify(S.providers))}catch(e){}stepQ(0)};
+}
+function stepQ(i){
+ bar((i+1)/(Q.length+1)*100);var q=Q[i];
+ app.innerHTML='<div class="mut">Question '+(i+1)+' / '+Q.length+'</div><h2>'+q.q+'</h2><div class="list"></div>';
+ var l=app.querySelector(".list");
+ q.o.forEach(function(o){var b=document.createElement("button");b.className="opt";b.textContent=o.l;
+  b.onclick=function(){S.a[q.k]=o.v;i+1<Q.length?stepQ(i+1):search()};l.appendChild(b)});
+}
+function search(){
+ bar(100);app.innerHTML="<h2>Je cherche pour vous…</h2>";
+ var a=S.a,tv=a.format==="tv",m=MOODS[a.mood],y=new Date().getFullYear();
+ var p={action:"discover",type:tv?"tv":"movie",with_watch_providers:S.providers.join("|"),
+  with_genres:tv?m.tv:m.m,sort_by:a.energy==="deep"?"vote_average.desc":"popularity.desc",
+  "vote_count.gte":a.energy==="deep"?"400":"100"};
+ if(a.who==="family"){p.with_genres=tv?"10751|16":"10751|16";p.without_genres="27|53"}
+ if(a.format==="short")p["with_runtime.lte"]="100";
+ var d=tv?"first_air_date":"primary_release_date";
+ if(a.era==="new")p[d+".gte"]=(y-4)+"-01-01";
+ if(a.era==="old")p[d+".lte"]="2005-12-31";
+ function qs(pg){p.page=pg;return Object.keys(p).map(function(k){return k+"="+encodeURIComponent(p[k])}).join("&")}
+ Promise.all([api(qs(1)),api(qs(2))]).then(function(r){
+  var seen={};pool=[].concat(r[0].results,r[1].results).filter(function(x){if(seen[x.id])return false;seen[x.id]=1;return x.poster_path});
+  for(var i=pool.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=pool[i];pool[i]=pool[j];pool[j]=t}
+  pos=0;show();
+ }).catch(function(){app.innerHTML='<h2>Oups, un souci technique.</h2><button class="btn" id="r">Recommencer</button>';document.getElementById("r").onclick=function(){stepQ(0)}});
+}
+function show(){
+ var chunk=pool.slice(pos,pos+3);
+ if(!chunk.length){app.innerHTML='<h2>Aucun résultat avec ces critères 😕</h2><div class="mut">Essayez d\'autres réponses, ou ajoutez des plateformes.</div><button class="btn" id="r">Recommencer</button><button class="btn ghost" id="p">Mes plateformes</button>';
+  document.getElementById("r").onclick=function(){stepQ(0)};document.getElementById("p").onclick=stepProviders;return}
+ var h='<h2>Votre sélection du soir ✨</h2>';
+ chunk.forEach(function(x){var t=x.title||x.name,dt=(x.release_date||x.first_air_date||"").slice(0,4),o=(x.overview||"Pas de résumé disponible.");
+  h+='<div class="res"><img alt="" src="https://image.tmdb.org/t/p/w342'+x.poster_path+'"><div><h3></h3><div class="mut">'+dt+' · ⭐ '+x.vote_average.toFixed(1)+'</div><p></p></div></div>'});
+ app.innerHTML=h+'<button class="btn" id="n">🔄 Autre idée</button><button class="btn ghost" id="r">Recommencer</button><button class="btn ghost" id="p">Mes plateformes</button>';
+ var cards=app.querySelectorAll(".res");
+ chunk.forEach(function(x,i){cards[i].querySelector("h3").textContent=x.title||x.name;var o=x.overview||"Pas de résumé disponible.";cards[i].querySelector("p").textContent=o.length>230?o.slice(0,230)+"…":o});
+ document.getElementById("n").onclick=function(){pos+=3;show()};
+ document.getElementById("r").onclick=function(){stepQ(0)};
+ document.getElementById("p").onclick=stepProviders;
+}
+stepProviders();
+</script></body></html>
